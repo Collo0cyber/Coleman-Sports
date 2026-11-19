@@ -471,9 +471,9 @@ function issuesPanel() {
 
 function render() {
   const s = S();
-  const [tab = 'table', arg] = decodeURIComponent(location.hash.slice(1)).split('/');
+  const [tab, arg] = decodeURIComponent(location.hash.slice(1)).split('/');
   const views = { table: viewTable, matches: () => viewMatches(+arg), scorers: viewScorers, teams: () => viewTeams(arg) };
-  const view = views[tab] ? tab : 'table';
+  const view = views[tab] ? tab : 'matches';   // landing page: this/next matchday
   document.title = s.name;
   app.innerHTML = `
     <header class="top">
@@ -485,7 +485,7 @@ function render() {
     </header>
     <main>${issuesPanel()}${views[view]()}</main>
     <nav class="tabs" aria-label="Sections">
-      ${[['table', 'Table', 'table'], ['matches', 'Matches', 'matches'], ['scorers', 'Scorers', 'ball'], ['teams', 'Teams', 'teams']]
+      ${[['matches', 'Matches', 'matches'], ['table', 'Table', 'table'], ['scorers', 'Scorers', 'ball'], ['teams', 'Teams', 'teams']]
         .map(([k, label, ic]) => `<a href="#${k}" class="${k === view ? 'on' : ''}" ${k === view ? 'aria-current="page"' : ''}>${icon(ic)}${label}</a>`).join('')}
     </nav>`;
 
