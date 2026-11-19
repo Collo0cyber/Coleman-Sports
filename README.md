@@ -83,6 +83,14 @@ Pattern 2
 ```
 With 3 patterns, matchdays 1, 4, 7… use pattern 1; 2, 5, 8… use pattern 2; 3, 6, 9… use pattern 3.
 
+### Fair running order (on automatically for 4 teams)
+Each Wednesday the site orders the 4 games so that:
+- exactly one team plays games 2 and 3 back to back, and every team gets that once in each block of 4 matchdays
+- the last game is shared evenly, with as few "last two weeks running" as the fixtures allow
+
+Pairings and home/away come from your pattern unchanged; only the order moves. Custom matchdays keep the order you typed.
+To turn it off: `fair_order: no`
+
 ### Dates
 `start:` + `every:` give each matchday's date. To move one (a skipped week, say), put the date on its header.
 Later matchdays carry on weekly from there:

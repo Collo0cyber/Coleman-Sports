@@ -16,7 +16,7 @@ try { localStorage.removeItem('admin'); } catch {}   // clear the flag older ver
 
 function parseSeason(text, file) {
   const S = {
-    file, name: file.replace(/\.txt$/i, ''), cycles: 1, start: null, every: 7, perTeam: 1, times: [], label: 'Gameweek',
+    file, name: file.replace(/\.txt$/i, ''), cycles: 1, start: null, every: 7, perTeam: 1, times: [], label: 'Gameweek', fairOrder: true,
     teams: [], entries: [], custom: new Set(), dates: new Map(), pattern: new Map(), matchdays: 0, issues: [],
   };
   const issue = (ln, msg) => S.issues.push({ ln, msg });
@@ -32,9 +32,10 @@ function parseSeason(text, file) {
     const line = raw.replace(/\/\/.*$/, '').trim();
     if (!line) return;
     let m;
-    if ((m = line.match(/^(season|name|cycles|matchdays|gameweeks|start|every|games[ _]per[ _]team|times|kick-?offs?|label)\s*:\s*(.*)$/i))) {
+    if ((m = line.match(/^(season|name|cycles|matchdays|gameweeks|start|every|games[ _]per[ _]team|times|kick-?offs?|label|fair[ _]order)\s*:\s*(.*)$/i))) {
       const k = m[1].toLowerCase().replace(/[ -]/g, '_'), v = m[2].trim();
       if (k === 'season' || k === 'name') S.name = v;
+      else if (k === 'fair_order') S.fairOrder = !/^(no|off|false|0)$/i.test(v);
       else if (k === 'cycles') S.cycles = Math.min(50, Math.max(1, parseInt(v, 10) || 1));
       else if (k === 'matchdays' || k === 'gameweeks') S.matchdays = Math.min(200, Math.max(1, parseInt(v, 10) || 1));
       else if (k === 'every') S.every = Math.max(1, parseInt(v, 10) || 7);
@@ -188,11 +189,81 @@ function applyResults(S) {
 /* Game numbers, kickoff times and dates. A date on a header resets the weekly rhythm from there on. */
 function finishGameweeks(S) {
   let anchor = S.start ? { no: 1, date: S.start } : null, id = 0;
+  if (S.fairOrder && S.teams.length === 4) planFairOrder(S);
   for (const g of S.gws) {
     if (S.dates.has(g.no)) anchor = { no: g.no, date: S.dates.get(g.no) };
     g.date = anchor ? new Date(anchor.date.getTime() + (g.no - anchor.no) * S.every * DAY) : null;
     g.matches.forEach((m, i) => { m.id = id++; m.gw = g.no; m.n = i + 1; m.time = m.time || S.times[i] || null; });
   }
+}
+
+/* Fair running order for 4 teams, 4 games a day, each team playing twice.
+   A day's games split into two rounds (each team once per round): games 1–2 are one round, 3–4 the other.
+   So exactly one team plays games 2 and 3 back to back, and two teams play the last game.
+   Over the season this picks, for every day:
+     • the back-to-back team: each team exactly once in every block of 4 matchdays
+     • which round goes second, i.e. who plays last
+   minimising (1) teams playing last two weeks running, then (2) uneven numbers of last games.
+   Pairings and home/away are never changed, only the order. Custom matchdays keep their own order. */
+const teamsOf = m => [m.home, m.away];
+const disjoint = (a, b) => !teamsOf(a).some(t => teamsOf(b).includes(t));
+
+function splitRounds(ms) {
+  if (ms.length !== 4) return null;
+  const j = [1, 2, 3].find(k => disjoint(ms[0], ms[k]));
+  if (!j) return null;
+  const X = [ms[0], ms[j]], Y = ms.filter((_, k) => k !== 0 && k !== j);
+  return disjoint(Y[0], Y[1]) ? [X, Y] : null;
+}
+
+function dayOptions(g, teams) {
+  const rounds = !g.custom && splitRounds(g.matches);
+  if (!rounds) {   // fixed order: report who it puts back to back / last
+    const ms = g.matches;
+    const b2b = ms.length === 4 ? teamsOf(ms[1]).find(t => teamsOf(ms[2]).includes(t)) : null;
+    return [{ order: ms, b2b, late: ms.length === 4 ? teamsOf(ms[3]) : [] }];
+  }
+  const out = [];
+  for (const t of teams) {
+    const withT = r => r.find(m => teamsOf(m).includes(t)), without = r => r.find(m => !teamsOf(m).includes(t));
+    for (const [A, B] of [rounds, [rounds[1], rounds[0]]]) {
+      if (!withT(A) || !withT(B)) continue;
+      const order = [without(A), withT(A), withT(B), without(B)];
+      out.push({ order, b2b: t, late: teamsOf(order[3]) });
+    }
+  }
+  return out;
+}
+
+function planFairOrder(S) {
+  const teams = S.teams.map(t => t.name);
+  const bit = t => 1 << teams.indexOf(t);
+  // state: "blockMask|prevLate" → best { rep, sq, late counts, picks }
+  let states = new Map([['0|', { rep: 0, sq: 0, late: {}, picks: [] }]]);
+  S.gws.forEach((g, w) => {
+    const next = new Map(), opts = dayOptions(g, teams), forced = opts.length === 1;
+    for (const [key, v] of states) {
+      let [mask, prev] = key.split('|'); mask = w % 4 === 0 ? 0 : +mask;
+      const prevLate = prev ? prev.split(',') : [];
+      opts.forEach((o, oi) => {
+        if (!forced && o.b2b && (mask & bit(o.b2b))) return;   // already had back-to-back this block
+        const late = { ...v.late };
+        o.late.forEach(t => (late[t] = (late[t] || 0) + 1));
+        const cand = {
+          rep: v.rep + o.late.filter(t => prevLate.includes(t)).length,
+          sq: Object.values(late).reduce((s, n) => s + n * n, 0),
+          late, picks: [...v.picks, oi],
+        };
+        const k = (mask | (o.b2b ? bit(o.b2b) : 0)) + '|' + [...o.late].sort().join(',');
+        const cur = next.get(k);
+        if (!cur || cand.rep < cur.rep || (cand.rep === cur.rep && cand.sq < cur.sq)) next.set(k, cand);
+      });
+    }
+    if (next.size) states = next;
+    else states = new Map([...states].map(([k, v]) => [k, { ...v, picks: [...v.picks, 0] }]));   // nothing fits: keep as is
+  });
+  const best = [...states.values()].sort((a, b) => a.rep - b.rep || a.sq - b.sq)[0];
+  S.gws.forEach((g, w) => { g.matches = dayOptions(g, teams)[best.picks[w]].order; });
 }
 
 function findPlayer(name, team) {
