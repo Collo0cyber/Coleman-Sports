@@ -1,0 +1,47 @@
+// ─────────────────────────────────────────────────────────────
+//  SEASON FILE: the only file you edit.
+//  Lines starting with // are notes and are ignored.
+// ─────────────────────────────────────────────────────────────
+
+season: Sunday League 2026/27
+cycles: 4          // times every team plays every other team. 4 teams × 4 cycles = 24 matches
+start: 2026-12-06  // date of gameweek 1 (optional)
+every: 7           // days between gameweeks (optional)
+
+// ── TEAMS & PLAYERS ──────────────────────────────────────────
+//  team: Name | colour (colour is optional)
+//  Don't reorder teams once the season has started: the order decides the fixtures.
+
+team: Red Lions | #d62839
+players: Ali Hassan, Ben Okoro, Chris Mensah, Dan Kim, Eli Moyo
+
+team: Blue Sharks | #1d70b8
+players: Frank Otieno, Gabe Silva, Henry Nkosi, Ivan Petrov, Jay Mwangi
+
+team: Green Eagles | #2a9d55
+players: Kofi Asante, Leo Duarte, Max Banda, Nate Ochieng, Omar Said
+
+team: Gold Tigers | #d99a00
+players: Paul Kamau, Quinn Adeyemi, Ray Tembo, Sam Lungu, Tom Njoroge
+
+// ── RESULTS ──────────────────────────────────────────────────
+//  GW<number> on its own line, then one line per match:
+//     Home 2-1 Away: Scorer, Scorer 55', Scorer x2, Scorer og, Scorer pen
+//  • Each scorer's team is worked out from the player lists above.
+//  • First names work if they're unique in that match ("Ali" = Ali Hassan).
+//  • og = own goal (counts for the other team, not in the top scorer list).
+//  • Minutes are optional.  0-0 needs no scorers.
+//  • Open the site with ?admin at the end of the address to see a ready-made
+//    template for the next gameweek and any mistakes in this file.
+
+GW1
+Red Lions 2-1 Gold Tigers: Ali 12', Ben 67', Paul 80'
+Green Eagles 1-1 Blue Sharks: Kofi 71', Gabe 34'
+
+GW2
+Green Eagles 0-1 Red Lions: Chris 90+2'
+Blue Sharks 2-3 Gold Tigers: Gabe, Henry, Paul, Quinn, Ray pen
+
+GW3
+Red Lions 2-2 Blue Sharks: Ali 23', Frank 30', Gabe 61', Ivan og 77'
+Gold Tigers 0-3 Green Eagles: Kofi 5', Kofi 40', Leo 88'
