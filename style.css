@@ -68,7 +68,7 @@ main { max-width: 640px; margin: 0 auto; padding: 12px 16px calc(84px + env(safe
   display: flex; flex-direction: column; align-items: center; gap: 2px;
   padding: 8px 0 9px; font-size: 12px; text-decoration: none; color: var(--muted);
 }
-.tabs a span { font-size: 18px; line-height: 1; }
+.tabs .ic { width: 22px; height: 22px; stroke-width: 1.9; }
 .tabs a.on { color: var(--accent); font-weight: 600; }
 
 /* ── cards ── */
@@ -85,8 +85,16 @@ h2.sub a { font-size: 13px; font-weight: 500; color: var(--accent); text-decorat
   background: var(--c); color: #fff; display: inline-grid; place-items: center;
   font-size: 10px; font-weight: 700; letter-spacing: .02em;
   box-shadow: inset 0 0 0 2px rgb(255 255 255 / .25);
+  position: relative;
 }
-.crest.lg { width: 44px; height: 44px; font-size: 15px; }
+.crest.md { width: 36px; height: 36px; font-size: 12px; }
+.crest.lg { width: 52px; height: 52px; font-size: 16px; }
+.crest img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; }
+.crest.has-logo { background: none; box-shadow: none; color: transparent; border-radius: 0; }
+.crest.has-logo img { opacity: 1; }
+
+.match .meta { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); margin: -2px 0 8px; }
+.match .time { background: var(--chip); color: var(--ink); font-weight: 700; padding: 2px 8px; border-radius: 6px; }
 
 /* ── standings ── */
 .standings { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -147,7 +155,9 @@ h2.sub a { font-size: 13px; font-weight: 500; color: var(--accent); text-decorat
 .goals ul.away { text-align: right; }
 .goals li { padding: 1px 0; }
 .goals .min { color: var(--muted); }
-.goals .ball { font-size: 12px; opacity: .7; padding-top: 2px; }
+.goals .ball { width: 14px; height: 14px; color: var(--muted); margin-top: 2px; }
+.mini { width: 13px; height: 13px; margin-left: 3px; vertical-align: -2px; color: var(--muted); }
+.crest { overflow: hidden; }
 
 /* ── scorers ── */
 .scorers { list-style: none; margin: 0 0 10px; }

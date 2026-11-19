@@ -298,9 +298,20 @@ const fmtDate = d => d ? d.toLocaleDateString(undefined, { weekday: 'short', day
 function crest(t, size = '') {
   if (!t) return '<span class="crest">?</span>';
   const ini = t.name.split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase();
-  const img = t.logo ? `<img src="${esc(t.logo)}" alt="" onload="this.parentNode.classList.add('has-logo')" onerror="this.remove()">` : '';
-  return `<span class="crest ${size}" style="--c:${esc(t.color)}" aria-hidden="true">${esc(ini)}${img}</span>`;
+  // Size is set inline too, so a big image can never spill out of the crest.
+  const img = t.logo ? `<img src="${esc(t.logo)}" alt="" decoding="async" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain" onload="this.parentNode.classList.add('has-logo')" onerror="this.remove()">` : '';
+  return `<span class="crest ${size}" style="--c:${esc(t.color)};position:relative" aria-hidden="true">${esc(ini)}${img}</span>`;
 }
+
+/* One outline icon set: 24×24 grid, 2px round strokes, currentColor. */
+const ICON_PATHS = {
+  table: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9.5h18M3 14.5h18M8.5 4v16"/>',
+  matches: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17.5h.01M12 17.5h.01"/>',
+  ball: '<circle cx="12" cy="12" r="9"/><path d="M12 8l3.8 2.8-1.45 4.45h-4.7L8.2 10.8z"/><path d="M12 8V3.2M15.8 10.8l4.6-1.5M14.35 15.25l2.8 3.9M9.65 15.25l-2.8 3.9M8.2 10.8 3.6 9.3"/>',
+  teams: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+};
+const icon = (name, cls = 'ic') =>
+  `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[name]}</svg>`;
 
 function viewTable() {
   const s = S();
@@ -376,7 +387,7 @@ function matchCard(m) {
         ${r ? `<div class="score"><b>${r.hs}</b><i>–</i><b>${r.as}</b></div>` : '<div class="score vs">vs</div>'}
         <div class="side away ${win === 'away' ? 'win' : ''}"><span>${esc(m.away)}</span>${crest(A, 'md')}</div>
       </div>
-      ${hl || al ? `<div class="goals"><ul class="home">${hl}</ul><span class="ball" aria-hidden="true">⚽</span><ul class="away">${al}</ul></div>` : ''}
+      ${hl || al ? `<div class="goals"><ul class="home">${hl}</ul>${icon('ball', 'ball')}<ul class="away">${al}</ul></div>` : ''}
     </article>`;
 }
 
@@ -409,7 +420,7 @@ function viewTeams(focus) {
           <div class="muted">${ordinal(r.rank)} · ${r.Pts} pts · W${r.W} D${r.D} L${r.L}</div></div></header>
         <ul class="squad">${players.map(p => {
           const g = goalsBy.get(t.name + '|' + p) || 0;
-          return `<li><span>${esc(p)}</span>${g ? `<b>${g} ⚽</b>` : ''}</li>`;
+          return `<li><span>${esc(p)}</span>${g ? `<b>${g}${icon('ball', 'mini')}</b>` : ''}</li>`;
         }).join('') || '<li class="muted">No players listed</li>'}</ul>
       </section>`;
   }).join('');
@@ -478,8 +489,8 @@ function render() {
     </header>
     <main>${issuesPanel()}${views[view]()}</main>
     <nav class="tabs" aria-label="Sections">
-      ${[['table', 'Table', '▤'], ['matches', 'Matches', '◷'], ['scorers', 'Scorers', '⚽'], ['teams', 'Teams', '◉']]
-        .map(([k, label, ic]) => `<a href="#${k}" class="${k === view ? 'on' : ''}" ${k === view ? 'aria-current="page"' : ''}><span aria-hidden="true">${ic}</span>${label}</a>`).join('')}
+      ${[['table', 'Table', 'table'], ['matches', 'Matches', 'matches'], ['scorers', 'Scorers', 'ball'], ['teams', 'Teams', 'teams']]
+        .map(([k, label, ic]) => `<a href="#${k}" class="${k === view ? 'on' : ''}" ${k === view ? 'aria-current="page"' : ''}>${icon(ic)}${label}</a>`).join('')}
     </nav>`;
 
   document.getElementById('season')?.addEventListener('change', e => {
