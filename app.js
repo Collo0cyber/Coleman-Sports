@@ -8,13 +8,9 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const norm = s => String(s).trim().toLowerCase().replace(/\s+/g, ' ');
 const DAY = 864e5;
 
-const ADMIN = (() => {
-  const q = new URLSearchParams(location.search);
-  try {
-    if (q.has('admin')) localStorage.setItem('admin', q.get('admin') === 'off' ? '' : '1');
-    return !!localStorage.getItem('admin');
-  } catch { return q.has('admin') && q.get('admin') !== 'off'; }
-})();
+// Admin box only while the address has ?admin. Nothing is remembered between visits.
+const ADMIN = new URLSearchParams(location.search).has('admin');
+try { localStorage.removeItem('admin'); } catch {}   // clear the flag older versions stored
 
 /* ───────────── parsing ───────────── */
 
@@ -467,7 +463,7 @@ function issuesPanel() {
     <section class="card admin ${s.issues.length ? 'warn' : 'ok'}">
       <h3>${s.issues.length ? `⚠ ${s.issues.length} thing${s.issues.length > 1 ? 's' : ''} to check in ${esc(s.file)}` : `✓ ${esc(s.file)} reads cleanly`}</h3>
       ${s.issues.length ? `<ul>${[...s.issues].sort((a, b) => a.ln - b.ln).map(i => `<li>${i.ln ? `<b>Line ${i.ln}</b> ` : ''}${esc(i.msg)}</li>`).join('')}</ul>` : ''}
-      <p class="muted">You see this box because admin mode is on for this browser. <a href="?admin=off">Turn off</a></p>
+      <p class="muted">Only shown because the address ends in ?admin. <a href="${esc(location.pathname)}">Leave admin view</a></p>
     </section>`;
 }
 

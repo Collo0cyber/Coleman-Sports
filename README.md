@@ -24,7 +24,7 @@ data/2026-27.txt    ← the season: teams, players, results  ← YOU EDIT THIS
 
 ## Each gameweek (works from your phone)
 1. Open your site with **`?admin`** at the end of the address, e.g. `https://you.github.io/league/?admin`.
-   Your browser then remembers admin mode. Readers never see it.
+   The admin box only shows while `?admin` is in the address. Bookmark that address on your phone.
 2. On **Matches**, the next gameweek shows a **template**: tap **Copy**, then **Edit on GitHub**.
 3. Paste the template at the bottom of the file and fill it in, then **Commit changes**:
    ```
