@@ -5,7 +5,7 @@
 
 season: Katorano FC League Season 4
 label: Matchday
-matchdays: 6       // 6 matchdays × 4 games = 24 games. Change this to make the season longer
+matchdays: 12       // 12 Wednesdays × 2 games = 24 games. Change this to make the season longer
 start: 2027-01-06  // date of matchday 1 (a Wednesday)
 every: 7           // days between matchdays
 times: 8:30 PM, 9:00 PM, 9:30 PM, 10:00 PM   // kickoff of game 1, 2, 3, 4
