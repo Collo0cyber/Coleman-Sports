@@ -1,0 +1,60 @@
+// ─────────────────────────────────────────────────────────────
+//  SEASON FILE: the only file you edit.
+//  Lines starting with // are notes and are ignored.
+// ─────────────────────────────────────────────────────────────
+
+season: Katorano FC League Season 4
+label: Matchday
+matchdays: 6       // 6 matchdays × 4 games = 24 games. Change this to make the season longer
+start: 2027-01-06  // date of matchday 1 (a Wednesday)
+every: 7           // days between matchdays
+times: 8:30 PM, 9:00 PM, 9:30 PM, 10:00 PM   // kickoff of game 1, 2, 3, 4
+
+// ── FIXTURE PATTERN ──────────────────────────────────────────
+//  These 3 matchdays repeat all season: matchdays 1, 4, 7, 10… use pattern 1;
+//  2, 5, 8, 11… use pattern 2; 3, 6, 9, 12… use pattern 3.
+//  Every team plays every other team twice in each set of 3 matchdays.
+
+Pattern 1
+Gumite FC vs Mugga FC
+Hormuz FC vs Eaglez FC
+Mugga FC vs Hormuz FC
+Eaglez FC vs Gumite FC
+
+Pattern 2
+Hormuz FC vs Eaglez FC
+Mugga FC vs Gumite FC
+Eaglez FC vs Mugga FC
+Gumite FC vs Hormuz FC
+
+Pattern 3
+Hormuz FC vs Gumite FC
+Eaglez FC vs Mugga FC
+Gumite FC vs Eaglez FC
+Mugga FC vs Hormuz FC
+
+// ── TEAMS & PLAYERS ──────────────────────────────────────────
+//  team: Name | colour | logo   (colour and logo are optional)
+//  e.g.  team: Mugga FC | #c9a227 | logos/mugga.png
+
+team: Mugga FC | #d62839
+players: William, Ben, Tabz, Mooni, Ssali, Zebra, Dr Tee
+
+team: Hormuz FC | #1d70b8
+players: Collo, Sam, Wizzy, Shaw, Enock, Sabiiti, Vidic
+
+team: Eaglez FC| #2a9d55
+players: Molson, Chad, Jose, Ali Mans, Xavi, Wycliffe
+
+team: Gumite FC | #d99a00
+players: Doctor, Muta, Ali, Ibra, Hassan, Vaali
+
+// ── RESULTS ──────────────────────────────────────────────────
+//  GW<number> on its own line, then one line per match:
+//     Home 2-1 Away: Scorer, Scorer 55', Scorer x2, Scorer og, Scorer pen
+//  • Each scorer's team is worked out from the player lists above.
+//  • First names work if they're unique in that match ("Ali" = Ali Hassan).
+//  • og = own goal (counts for the other team, not in the top scorer list).
+//  • Minutes are optional.  0-0 needs no scorers.
+//  • Open the site with ?admin at the end of the address to see a ready-made
+//    template for the next gameweek and any mistakes in this file.

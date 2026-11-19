@@ -6,6 +6,7 @@ const PALETTE = ['#d62839', '#1d70b8', '#2a9d55', '#d99a00', '#7b3fbf', '#e76f00
 const app = document.getElementById('app');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const norm = s => String(s).trim().toLowerCase().replace(/\s+/g, ' ');
+const DAY = 864e5;
 
 const ADMIN = (() => {
   const q = new URLSearchParams(location.search);
@@ -18,56 +19,88 @@ const ADMIN = (() => {
 /* ───────────── parsing ───────────── */
 
 function parseSeason(text, file) {
-  const S = { file, name: file.replace(/\.txt$/i, ''), cycles: 1, start: null, every: 7, teams: [], entries: [], issues: [] };
+  const S = {
+    file, name: file.replace(/\.txt$/i, ''), cycles: 1, start: null, every: 7, perTeam: 1, times: [], label: 'Gameweek',
+    teams: [], entries: [], custom: new Set(), dates: new Map(), pattern: new Map(), matchdays: 0, issues: [],
+  };
   const issue = (ln, msg) => S.issues.push({ ln, msg });
-  let team = null, gw = null;
+  const readDate = (v, ln) => {
+    const d = new Date(v + 'T12:00:00');
+    if (isNaN(d)) { issue(ln, `Can't read date "${v}" (use YYYY-MM-DD)`); return null; }
+    return d;
+  };
+  let team = null, gw = null, pat = null;
 
   text.split(/\r?\n/).forEach((raw, i) => {
     const ln = i + 1;
     const line = raw.replace(/\/\/.*$/, '').trim();
     if (!line) return;
     let m;
-    if ((m = line.match(/^(season|name|cycles|start|every)\s*:\s*(.*)$/i))) {
-      const k = m[1].toLowerCase(), v = m[2].trim();
+    if ((m = line.match(/^(season|name|cycles|matchdays|gameweeks|start|every|games[ _]per[ _]team|times|kick-?offs?|label)\s*:\s*(.*)$/i))) {
+      const k = m[1].toLowerCase().replace(/[ -]/g, '_'), v = m[2].trim();
       if (k === 'season' || k === 'name') S.name = v;
       else if (k === 'cycles') S.cycles = Math.min(50, Math.max(1, parseInt(v, 10) || 1));
+      else if (k === 'matchdays' || k === 'gameweeks') S.matchdays = Math.min(200, Math.max(1, parseInt(v, 10) || 1));
       else if (k === 'every') S.every = Math.max(1, parseInt(v, 10) || 7);
-      else if (k === 'start') {
-        const d = new Date(v + 'T12:00:00');
-        if (isNaN(d)) issue(ln, `Can't read start date "${v}" (use YYYY-MM-DD)`); else S.start = d;
-      }
+      else if (k === 'games_per_team') S.perTeam = Math.min(20, Math.max(1, parseInt(v, 10) || 1));
+      else if (k === 'start') S.start = readDate(v, ln);
+      else if (k === 'label') S.label = v || 'Gameweek';
+      else S.times = v.split(',').map(x => x.trim()).filter(Boolean);
     } else if ((m = line.match(/^team\s*:\s*(.+)$/i))) {
-      const [name, color] = m[1].split('|').map(x => x.trim());
+      const [name, ...extra] = m[1].split('|').map(x => x.trim());
       if (S.teams.some(t => norm(t.name) === norm(name))) issue(ln, `Team "${name}" is listed twice`);
-      team = { name, color: /^#[0-9a-f]{3,8}$/i.test(color || '') ? color : PALETTE[S.teams.length % PALETTE.length], players: [] };
+      team = { name, color: PALETTE[S.teams.length % PALETTE.length], logo: null, players: [] };
+      for (const x of extra) {
+        if (/^#[0-9a-f]{3,8}$/i.test(x)) team.color = x;
+        else if (/^(https:\/\/[^\s"'<>]+|[\w./ -]+)\.(png|jpe?g|webp|svg|gif)(\?[^\s"'<>]*)?$/i.test(x)) team.logo = x;
+        else if (x) issue(ln, `Don't understand "${x}" for ${name}: expected a colour like #d62839 or a logo like logos/team.png`);
+      }
       S.teams.push(team);
     } else if ((m = line.match(/^players?\s*:\s*(.*)$/i))) {
       if (!team) issue(ln, 'Players line comes before any team: line');
       else team.players.push(...m[1].split(',').map(x => x.trim()).filter(Boolean));
-    } else if ((m = line.match(/^(?:gw|gameweek|week|round|matchday)\s*(\d+)\s*:?\s*$/i))) {
-      gw = +m[1];
+    } else if ((m = line.match(/^pattern\s*(\d+)\s*:?$/i))) {
+      pat = +m[1]; gw = null;
+      if (!S.pattern.has(pat)) S.pattern.set(pat, []);
+    } else if ((m = line.match(/^(?:gw|gameweek|week|round|matchday|md)\s*(\d+)\b(.*)$/i)) && isHeaderRest(m[2])) {
+      gw = +m[1]; pat = null;
+      if (/\bcustom\b/i.test(m[2])) S.custom.add(gw);
+      const d = m[2].match(/\d{4}-\d{1,2}-\d{1,2}/);
+      if (d) { const dt = readDate(d[0], ln); if (dt) S.dates.set(gw, dt); }
     } else {
       const ci = line.indexOf(':');
       const head = ci < 0 ? line : line.slice(0, ci);
-      const mm = head.match(/^(.+?)\s+(\d+)\s*[-–—]\s*(\d+)\s+(.+)$/);
-      if (mm) S.entries.push({ ln, gw, home: mm[1].trim(), hs: +mm[2], as: +mm[3], away: mm[4].trim(), scorers: ci < 0 ? '' : line.slice(ci + 1) });
+      const sm = head.match(/^(.+?)\s+(\d+)\s*[-–—]\s*(\d+)\s+(.+)$/);
+      const vm = !sm && line.match(/^(.+?)\s+(?:v|vs\.?|versus)\s+(.+?)(?:\s*@\s*(.+))?$/i);
+      if (pat) {
+        if (vm) S.pattern.get(pat).push({ ln, home: vm[1].trim(), away: vm[2].trim(), time: vm[3]?.trim() || null });
+        else issue(ln, `Pattern ${pat} should only list fixtures like "Team A vs Team B"`);
+      } else if (sm) S.entries.push({ ln, gw, kind: 'result', home: sm[1].trim(), hs: +sm[2], as: +sm[3], away: sm[4].trim(), scorers: ci < 0 ? '' : line.slice(ci + 1) });
+      else if (vm) S.entries.push({ ln, gw, kind: 'fixture', home: vm[1].trim(), away: vm[2].trim(), time: vm[3]?.trim() || null });
       else issue(ln, `Can't read: "${line}"`);
     }
   });
 
   buildFixtures(S);
   applyResults(S);
+  finishGameweeks(S);
   computeStats(S);
   return S;
 }
 
-/* Circle-method round robin, repeated `cycles` times with home/away flipped every other cycle. */
+/* Header text after "GW3" may only hold "custom", a date and separators. */
+const isHeaderRest = rest => !rest.replace(/\bcustom\b/i, '').replace(/\d{4}-\d{1,2}-\d{1,2}/, '').replace(/[\s|:,·-]/g, '');
+
+/* Circle-method round robin, repeated `cycles` times (home/away flipped every other cycle).
+   Rounds (each team plays once) are grouped `games_per_team` at a time into gameweeks,
+   so a cycle can run over into the next gameweek. Custom gameweeks are skipped over. */
 function buildFixtures(S) {
-  S.gws = [];
-  if (S.teams.length < 2) return;
+  S.gws = [...S.custom].map(no => ({ no, custom: true, byes: [], matches: [] }));
+  if (S.pattern.size) return buildFromPattern(S);
+  if (S.teams.length < 2) return S.gws.sort((a, b) => a.no - b.no);
   const t = S.teams.map(x => x.name);
   if (t.length % 2) t.push(null);
-  const n = t.length, rounds = [];
+  const n = t.length, base = [];
   for (let r = 0; r < n - 1; r++) {
     const pairs = [], byes = [];
     for (let i = 0; i < n / 2; i++) {
@@ -75,35 +108,74 @@ function buildFixtures(S) {
       if (i === 0 ? r % 2 === 1 : i % 2 === 1) [h, a] = [a, h];
       if (h === null) byes.push(a); else if (a === null) byes.push(h); else pairs.push([h, a]);
     }
-    rounds.push({ pairs, byes });
+    base.push({ pairs, byes });
     t.splice(1, 0, t.pop());
   }
-  let id = 0;
-  for (let c = 0; c < S.cycles; c++) {
-    rounds.forEach((rd, r) => {
-      const no = c * (n - 1) + r + 1;
-      const date = S.start ? new Date(S.start.getTime() + (no - 1) * S.every * 864e5) : null;
-      S.gws.push({
-        no, date, byes: rd.byes,
-        matches: rd.pairs.map(([h, a]) => (c % 2 ? [a, h] : [h, a])).map(([home, away]) => ({ id: id++, gw: no, home, away, result: null })),
-      });
+  const rounds = [];
+  for (let c = 0; c < S.cycles; c++) base.forEach(rd => rounds.push({ byes: rd.byes, pairs: rd.pairs.map(([h, a]) => (c % 2 ? [a, h] : [h, a])) }));
+
+  let no = 1;
+  for (let k = 0; k < rounds.length; k += S.perTeam) {
+    while (S.custom.has(no)) no++;
+    const chunk = rounds.slice(k, k + S.perTeam);
+    S.gws.push({
+      no: no++, custom: false,
+      byes: [...new Set(chunk.flatMap(r => r.byes))],
+      matches: chunk.flatMap(r => r.pairs).map(([home, away]) => ({ home, away, result: null, time: null })),
     });
   }
+  S.gws.sort((a, b) => a.no - b.no);
+}
+
+/* Your own fixture pattern (Pattern 1, Pattern 2, …) repeated in order: matchday n uses pattern ((n-1) mod P) + 1. */
+function buildFromPattern(S) {
+  const issue = (ln, msg) => S.issues.push({ ln, msg });
+  const teamBy = name => S.teams.find(t => norm(t.name) === norm(name));
+  const P = Math.max(...S.pattern.keys());
+  for (let p = 1; p <= P; p++) {
+    if (!S.pattern.has(p)) { issue(0, `Pattern ${p} is missing (patterns must be numbered 1, 2, 3…)`); S.pattern.set(p, []); }
+    const seen = new Map();
+    for (const f of S.pattern.get(p)) {
+      const h = teamBy(f.home), a = teamBy(f.away);
+      if (!h || !a) { issue(f.ln, `Unknown team "${!h ? f.home : f.away}"`); f.bad = true; continue; }
+      f.home = h.name; f.away = a.name;
+      for (const t of [h.name, a.name]) seen.set(t, (seen.get(t) || 0) + 1);
+    }
+    const counts = [...new Set(S.teams.map(t => seen.get(t.name) || 0))];
+    if (counts.length > 1) issue(S.pattern.get(p)[0]?.ln || 0, `In pattern ${p} not every team plays the same number of games`);
+  }
+  const total = S.matchdays || P * S.cycles;
+  for (let no = 1; no <= total; no++) {
+    if (S.custom.has(no)) continue;
+    const fx = S.pattern.get(((no - 1) % P) + 1).filter(f => !f.bad);
+    S.gws.push({ no, custom: false, byes: [], matches: fx.map(f => ({ home: f.home, away: f.away, time: f.time, result: null })) });
+  }
+  S.gws.sort((a, b) => a.no - b.no);
 }
 
 function applyResults(S) {
   const teamBy = name => S.teams.find(t => norm(t.name) === norm(name));
   const issue = (ln, msg) => S.issues.push({ ln, msg });
+  const label = S.label;
   for (const e of S.entries) {
     const h = teamBy(e.home), a = teamBy(e.away);
     if (!h || !a) { issue(e.ln, `Unknown team "${!h ? e.home : e.away}"`); continue; }
     if (h === a) { issue(e.ln, 'A team can\'t play itself'); continue; }
-    if (e.gw && !S.gws.some(g => g.no === e.gw)) { issue(e.ln, `There is no GW${e.gw} (season has ${S.gws.length})`); continue; }
-    const pool = (e.gw ? S.gws.filter(g => g.no === e.gw) : S.gws).flatMap(g => g.matches)
-      .filter(m => !m.result && [m.home, m.away].includes(h.name) && [m.home, m.away].includes(a.name));
-    const fx = pool.find(m => m.home === h.name) || pool[0];
+    const gw = e.gw && S.gws.find(g => g.no === e.gw);
+    if (e.gw && !gw) { issue(e.ln, `There is no ${label} ${e.gw} (last one is ${S.gws.at(-1)?.no ?? 0})`); continue; }
+    const same = m => [m.home, m.away].includes(h.name) && [m.home, m.away].includes(a.name);
+
+    if (e.kind === 'fixture') {
+      if (!gw?.custom) { issue(e.ln, `To list your own fixtures, put them under a custom header, e.g. "${label} ${e.gw || 1} custom"`); continue; }
+      gw.matches.push({ home: h.name, away: a.name, time: e.time, result: null });
+      continue;
+    }
+
+    const pool = (gw ? [gw] : S.gws).flatMap(g => g.matches).filter(m => !m.result && same(m));
+    let fx = pool.find(m => m.home === h.name) || pool[0];
+    if (!fx && gw?.custom) { fx = { home: h.name, away: a.name, time: null, result: null }; gw.matches.push(fx); }
     if (!fx) {
-      issue(e.ln, e.gw ? `${h.name} v ${a.name} isn't a fixture in GW${e.gw} (or is entered twice)` : `No unplayed ${h.name} v ${a.name} fixture left`);
+      issue(e.ln, gw ? `${h.name} v ${a.name} isn't a fixture in ${label} ${e.gw} (or is entered twice)` : `No unplayed ${h.name} v ${a.name} fixture left`);
       continue;
     }
     const flipped = fx.home !== h.name;
@@ -113,8 +185,17 @@ function applyResults(S) {
       hs: flipped ? e.as : e.hs,
       as: flipped ? e.hs : e.as,
       goals: goals.map(g => ({ ...g, side: g.forTeam === fx.home ? 'home' : 'away' })),
-      ln: e.ln,
     };
+  }
+}
+
+/* Game numbers, kickoff times and dates. A date on a header resets the weekly rhythm from there on. */
+function finishGameweeks(S) {
+  let anchor = S.start ? { no: 1, date: S.start } : null, id = 0;
+  for (const g of S.gws) {
+    if (S.dates.has(g.no)) anchor = { no: g.no, date: S.dates.get(g.no) };
+    g.date = anchor ? new Date(anchor.date.getTime() + (g.no - anchor.no) * S.every * DAY) : null;
+    g.matches.forEach((m, i) => { m.id = id++; m.gw = g.no; m.n = i + 1; m.time = m.time || S.times[i] || null; });
   }
 }
 
@@ -122,7 +203,7 @@ function findPlayer(name, team) {
   const q = norm(name);
   const exact = team.players.find(p => norm(p) === q);
   if (exact) return [exact];
-  return team.players.filter(p => norm(p).split(' ').includes(q) || norm(p).startsWith(q + ' ') || norm(p).startsWith(q));
+  return team.players.filter(p => norm(p).split(' ').includes(q) || norm(p).startsWith(q));
 }
 
 function parseScorers(e, h, a, issue) {
@@ -139,7 +220,10 @@ function parseScorers(e, h, a, issue) {
     if (!name) { issue(e.ln, 'A goal is missing the scorer\'s name'); continue; }
     if (mins.length > 1) count = mins.length;
 
-    const inH = findPlayer(name, h), inA = findPlayer(name, a);
+    let inH = findPlayer(name, h), inA = findPlayer(name, a);
+    // An exact name beats a partial one ("Ali" is Ali, not Ali Mans).
+    const exH = inH.filter(p => norm(p) === norm(name)), exA = inA.filter(p => norm(p) === norm(name));
+    if (exH.length + exA.length === 1) { inH = exH; inA = exA; }
     let player = null, team = null;
     if (inH.length + inA.length === 1) { player = inH[0] || inA[0]; team = inH.length ? h : a; }
     else if (inH.length + inA.length > 1) issue(e.ln, `"${name}" matches more than one player (${[...inH, ...inA].join(', ')}). Use the full name`);
@@ -157,7 +241,7 @@ function parseScorers(e, h, a, issue) {
     for (const g of unknown) {
       const side = shortH > 0 && shortA <= 0 ? h : shortA > 0 && shortH <= 0 ? a : null;
       if (side && !g.og) {
-        g.team = side.name; g.forTeam = side.name; g.guest = true; goals.push(g);
+        g.team = side.name; g.forTeam = side.name; goals.push(g);
         issue(e.ln, `"${g.player}" isn't in either squad; counted for ${side.name}. Add them to the players list`);
       } else {
         issue(e.ln, `Unknown player "${g.player}": add them to a team's players line`);
@@ -196,7 +280,7 @@ function computeStats(S) {
   S.scorers = [...scorers.values()].sort((x, y) => y.goals - x.goals || x.player.localeCompare(y.player));
   rank(S.table, r => `${r.Pts}|${r.GD}|${r.GF}`);
   rank(S.scorers, s => s.goals);
-  const next = S.gws.find(g => g.matches.some(m => !m.result));
+  const next = S.gws.find(g => !g.matches.length || g.matches.some(m => !m.result));
   S.currentGw = next ? next.no : (S.gws.at(-1)?.no || 1);
 }
 
@@ -214,7 +298,8 @@ const fmtDate = d => d ? d.toLocaleDateString(undefined, { weekday: 'short', day
 function crest(t, size = '') {
   if (!t) return '<span class="crest">?</span>';
   const ini = t.name.split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase();
-  return `<span class="crest ${size}" style="--c:${esc(t.color)}" aria-hidden="true">${esc(ini)}</span>`;
+  const img = t.logo ? `<img src="${esc(t.logo)}" alt="" onload="this.parentNode.classList.add('has-logo')" onerror="this.remove()">` : '';
+  return `<span class="crest ${size}" style="--c:${esc(t.color)}" aria-hidden="true">${esc(ini)}${img}</span>`;
 }
 
 function viewTable() {
@@ -247,18 +332,19 @@ function viewMatches(gwNo) {
   if (!s.gws.length) return empty('Add at least two teams to generate fixtures.');
   const gw = s.gws.find(g => g.no === gwNo) || s.gws.find(g => g.no === s.currentGw);
   const chips = s.gws.map(g => {
-    const done = g.matches.every(m => m.result), part = !done && g.matches.some(m => m.result);
+    const done = g.matches.length && g.matches.every(m => m.result), part = !done && g.matches.some(m => m.result);
     return `<a href="#matches/${g.no}" class="chip ${g.no === gw.no ? 'on' : ''} ${done ? 'done' : part ? 'part' : ''}" ${g.no === gw.no ? 'aria-current="true"' : ''}>${g.no}</a>`;
   }).join('');
-  const prev = s.gws.find(g => g.no === gw.no - 1), next = s.gws.find(g => g.no === gw.no + 1);
+  const i = s.gws.indexOf(gw), prev = s.gws[i - 1], next = s.gws[i + 1];
+  const upNext = gw.no === s.currentGw && (!gw.matches.length || gw.matches.some(m => !m.result));
   return `
-    <nav class="gwbar" aria-label="Gameweeks"><div class="chips" id="chips">${chips}</div></nav>
+    <nav class="gwbar" aria-label="${esc(s.label)}s"><div class="chips">${chips}</div></nav>
     <div class="gwhead">
-      ${prev ? `<a class="arrow" href="#matches/${prev.no}" aria-label="Previous gameweek">‹</a>` : '<span class="arrow off">‹</span>'}
-      <div><h2>Gameweek ${gw.no}</h2><div class="muted">${fmtDate(gw.date)}${gw.no === s.currentGw && gw.matches.some(m => !m.result) ? ' · <b>Up next</b>' : ''}</div></div>
-      ${next ? `<a class="arrow" href="#matches/${next.no}" aria-label="Next gameweek">›</a>` : '<span class="arrow off">›</span>'}
+      ${prev ? `<a class="arrow" href="#matches/${prev.no}" aria-label="Previous">‹</a>` : '<span class="arrow off">‹</span>'}
+      <div><h2>${esc(s.label)} ${gw.no}</h2><div class="muted">${fmtDate(gw.date)}${upNext ? `${gw.date ? ' · ' : ''}<b>Up next</b>` : ''}</div></div>
+      ${next ? `<a class="arrow" href="#matches/${next.no}" aria-label="Next">›</a>` : '<span class="arrow off">›</span>'}
     </div>
-    ${gw.matches.map(matchCard).join('')}
+    ${gw.matches.map(matchCard).join('') || empty('Fixtures not announced yet.')}
     ${gw.byes.length ? `<p class="note">Bye: ${gw.byes.map(esc).join(', ')}</p>` : ''}
     ${ADMIN ? adminGw(gw) : ''}`;
 }
@@ -284,10 +370,11 @@ function matchCard(m) {
   const win = r ? (r.hs > r.as ? 'home' : r.hs < r.as ? 'away' : '') : '';
   return `
     <article class="card match ${r ? 'played' : ''}">
+      <div class="meta"><span>Game ${m.n}</span>${m.time ? `<span class="time">${esc(m.time)}</span>` : ''}</div>
       <div class="row">
-        <div class="side home ${win === 'home' ? 'win' : ''}">${crest(H)}<span>${esc(m.home)}</span></div>
+        <div class="side home ${win === 'home' ? 'win' : ''}">${crest(H, 'md')}<span>${esc(m.home)}</span></div>
         ${r ? `<div class="score"><b>${r.hs}</b><i>–</i><b>${r.as}</b></div>` : '<div class="score vs">vs</div>'}
-        <div class="side away ${win === 'away' ? 'win' : ''}"><span>${esc(m.away)}</span>${crest(A)}</div>
+        <div class="side away ${win === 'away' ? 'win' : ''}"><span>${esc(m.away)}</span>${crest(A, 'md')}</div>
       </div>
       ${hl || al ? `<div class="goals"><ul class="home">${hl}</ul><span class="ball" aria-hidden="true">⚽</span><ul class="away">${al}</ul></div>` : ''}
     </article>`;
@@ -317,7 +404,7 @@ function viewTeams(focus) {
     const r = s.table.find(x => x.team === t);
     const players = [...t.players].sort((a, b) => (goalsBy.get(t.name + '|' + b) || 0) - (goalsBy.get(t.name + '|' + a) || 0) || a.localeCompare(b));
     return `
-      <section class="card teamcard" id="team-${esc(t.name)}" ${focus === t.name ? 'data-focus' : ''}>
+      <section class="card teamcard" ${focus === t.name ? 'data-focus' : ''}>
         <header>${crest(t, 'lg')}<div><h2>${esc(t.name)}</h2>
           <div class="muted">${ordinal(r.rank)} · ${r.Pts} pts · W${r.W} D${r.D} L${r.L}</div></div></header>
         <ul class="squad">${players.map(p => {
@@ -336,15 +423,21 @@ const empty = html => `<div class="card empty">${html}</div>`;
 
 /* Admin-only: template for the gameweek + list of problems in the file. */
 function adminGw(gw) {
-  const tpl = `GW${gw.no}\n` + gw.matches.map(m => m.result ? null : `${m.home} 0-0 ${m.away}: `).filter(Boolean).join('\n');
-  const open = gw.matches.some(m => !m.result);
-  return open ? `
+  const s = S();
+  const open = gw.matches.filter(m => !m.result);
+  if (gw.matches.length && !open.length) return '';
+  const head = `${s.label === 'Gameweek' ? 'GW' : s.label} ${gw.no}${gw.custom ? ' custom' : ''}`;
+  const tpl = gw.matches.length
+    ? head + '\n' + open.map(m => `${m.home} 0-0 ${m.away}: `).join('\n')
+    : `${s.label} ${gw.no} custom\nTeam A vs Team B @ 8:30 PM`;
+  return `
     <section class="card admin">
-      <h3>Template for GW${gw.no}</h3>
-      <p class="muted">Copy this, paste it at the end of <code>data/${esc(S().file)}</code>, then fill in scores and scorers.</p>
+      <h3>Template for ${esc(s.label)} ${gw.no}</h3>
+      <p class="muted">Copy this, paste it at the end of <code>data/${esc(s.file)}</code>, then fill in scores and scorers.
+      ${gw.custom ? 'Since this one has your own fixtures, you can instead change "vs" to the score on the lines already there.' : ''}</p>
       <pre id="tpl">${esc(tpl)}</pre>
       <div class="btns"><button type="button" id="copy">Copy</button>${editLink()}</div>
-    </section>` : '';
+    </section>`;
 }
 
 function editLink() {
@@ -362,7 +455,7 @@ function issuesPanel() {
   return `
     <section class="card admin ${s.issues.length ? 'warn' : 'ok'}">
       <h3>${s.issues.length ? `⚠ ${s.issues.length} thing${s.issues.length > 1 ? 's' : ''} to check in ${esc(s.file)}` : `✓ ${esc(s.file)} reads cleanly`}</h3>
-      ${s.issues.length ? `<ul>${s.issues.sort((a, b) => a.ln - b.ln).map(i => `<li><b>Line ${i.ln}</b> ${esc(i.msg)}</li>`).join('')}</ul>` : ''}
+      ${s.issues.length ? `<ul>${[...s.issues].sort((a, b) => a.ln - b.ln).map(i => `<li>${i.ln ? `<b>Line ${i.ln}</b> ` : ''}${esc(i.msg)}</li>`).join('')}</ul>` : ''}
       <p class="muted">You see this box because admin mode is on for this browser. <a href="?admin=off">Turn off</a></p>
     </section>`;
 }
@@ -379,7 +472,7 @@ function render() {
     <header class="top">
       <div class="title">
         <h1>${esc(s.name)}</h1>
-        <div class="muted">${s.played} of ${s.total} matches played${s.gws.length ? ` · ${s.gws.length} gameweeks` : ''}</div>
+        <div class="muted">${s.played} of ${s.total} matches played${s.gws.length ? ` · ${s.gws.length} ${esc(s.label.toLowerCase())}s` : ''}</div>
       </div>
       ${state.seasons.length > 1 ? `<select id="season" aria-label="Season">${state.seasons.map((x, i) => `<option value="${i}" ${i === state.si ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}
     </header>
@@ -399,8 +492,8 @@ function render() {
     catch { e.target.textContent = 'Select & copy manually'; }
   });
   document.querySelector('.chip.on')?.scrollIntoView({ inline: 'center', block: 'nearest' });
-  document.querySelector('[data-focus]')?.scrollIntoView({ block: 'start' });
-  if (!document.querySelector('[data-focus]')) window.scrollTo(0, 0);
+  const focus = document.querySelector('[data-focus]');
+  if (focus) focus.scrollIntoView({ block: 'start' }); else window.scrollTo(0, 0);
 }
 
 async function start() {

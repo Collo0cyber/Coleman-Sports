@@ -61,6 +61,50 @@ players: Ali Hassan, Ben Okoro, ...
 - **Don't reorder teams or lower `cycles` mid-season**: the order decides the fixtures. Raising `cycles` just adds gameweeks at the end.
 - Table order: points → goal difference → goals scored.
 
+### Weekly format, kickoff times, names
+```
+label: Matchday                                // what to call a gameweek
+games_per_team: 2                              // each team plays 2 games per matchday
+times: 8:30 PM, 9:00 PM, 9:30 PM, 10:00 PM     // kickoff of game 1, 2, 3, 4
+```
+With 4 teams and `games_per_team: 2`, each matchday has 4 games. A full round (6 games) runs over into
+the next matchday, so matchdays 1–3 hold two full rounds, and the pattern starts again at matchday 4.
+
+### Your own repeating pattern (overrides the automatic fixtures)
+Write a few matchdays once and they repeat all season. `matchdays:` sets the season length.
+```
+matchdays: 6
+Pattern 1
+Gumite FC vs Mugga FC
+Hormuz FC vs Eaglez FC
+...
+Pattern 2
+...
+```
+With 3 patterns, matchdays 1, 4, 7… use pattern 1; 2, 5, 8… use pattern 2; 3, 6, 9… use pattern 3.
+
+### Dates
+`start:` + `every:` give each matchday's date. To move one (a skipped week, say), put the date on its header.
+Later matchdays carry on weekly from there:
+```
+Matchday 2 | 2026-09-02
+```
+
+### Your own fixtures for a matchday
+Add `custom` to the header and list the games. Generated fixtures skip that number and carry on after it.
+```
+Matchday 1 custom | 2026-08-19
+Mugga FC vs Gumite FC @ 9:00 PM
+Hormuz FC vs Wazalendo Shooters @ 9:30 PM
+```
+Once played, change `vs` to the score and add scorers: `Mugga FC 2-1 Gumite FC: Ali, Ali, Ben`.
+
+### Team logos
+1. Upload the images into a `logos` folder in the repository: square PNGs about 256×256 px with a transparent background look best.
+2. Add the path to the team line: `team: Mugga FC | #c9a227 | logos/mugga.png`
+
+If an image is missing, the coloured circle with initials is shown instead.
+
 ## New season
 Copy `data/2026-27.txt` to e.g. `data/2027-28.txt`, delete the results and put it first in `data/seasons.json`:
 ```json
