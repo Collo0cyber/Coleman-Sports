@@ -38,7 +38,7 @@ Mugga FC vs Hormuz FC
 //  e.g.  team: Mugga FC | #c9a227 | logos/mugga.png
 
 team: Mugga FC | #d62839 | logos/mugga.png
-players: William, Ben, Tabz, Mooni, Ssali, Zebra, Dr Tee
+players: William, Ben, Tabz, Mooni, Ssali, Zebra, Dr Tee, Colin ug
 
 team: Hormuz FC | #1d70b8 | logos/hormuz.png
 players: Collo, Sam, Wizzy, P Shaw, Enock, Sabiiti, Vidic
@@ -56,8 +56,8 @@ players: Doctor, Muta, Ali, Ibra, Hassan, Vaali
 GW1 
 gumite fc 2-2 mugga fc: Doctor, ali, william, mooni
 hormuz fc 3-3 eaglez fc: xavi, sam, molson, enock, p shaw, jose
-mugga fc 1-1 hormuz fc: dr tee, collo og
-eaglez fc 0-0 gumite fc: molson og, molson
+mugga fc 1-1 hormuz fc: dr tee, collo
+eaglez fc 0-0 gumite fc:
 
 //  • Each scorer's team is worked out from the player lists above.
 //  • First names work if they're unique in that match ("Ali" = Ali Hassan).
