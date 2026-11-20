@@ -44,6 +44,11 @@ data/2026-27.txt    ← the season: teams, players, results  ← YOU EDIT THIS
 | `Ali pen 30'` | penalty |
 | `Ivan og` | own goal: counts for the *other* team, not in top scorers |
 | `90+2'` | stoppage-time minute |
+| `Ben yc 30'` | yellow card (also `yellow`) |
+| `Ali rc` | red card (also `red`) |
+
+Cards go in the same comma list as the goals and don't count towards the score.
+A second `yc` for the same player in one match shows as a sending-off.
 
 A player who isn't on either squad is counted for the side that is short of goals, and you get a warning to add them.
 

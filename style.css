@@ -157,6 +157,22 @@ h2.sub a { font-size: 13px; font-weight: 500; color: var(--accent); text-decorat
 .goals .min { color: var(--muted); }
 .goals .ball { width: 14px; height: 14px; color: var(--muted); margin-top: 2px; }
 .mini { width: 13px; height: 13px; margin-left: 3px; vertical-align: -2px; color: var(--muted); }
+
+/* ── cards (bookings) ── */
+.bk { display: inline-block; width: 9px; height: 12px; border-radius: 2px; vertical-align: -1px; margin-right: 5px; position: relative; box-shadow: 0 0 0 1px rgb(0 0 0 / .15); }
+.bk.y { background: #f5c518; }
+.bk.r { background: #d62828; }
+/* second yellow: a yellow card peeking out behind the red one */
+.bk.y2 { background: #d62828; box-shadow: -3px -2px 0 0 #f5c518, 0 0 0 1px rgb(0 0 0 / .15); margin-left: 3px; }
+/* own goal: red ball in the middle column */
+.goals .ball.og { color: #e03b3b; }
+.goals + .bookings { border-top: 0; padding-top: 4px; margin-top: 2px; }
+.bookings > .bk { margin: 3px 3px 0; justify-self: center; }
+.scorers.cards .tally { display: flex; gap: 12px; font-weight: 800; font-size: 16px; }
+.scorers.cards .tally .bk { width: 11px; height: 15px; vertical-align: -2px; }
+.pst { display: inline-flex; gap: 8px; white-space: nowrap; }
+.squad .ct { font-size: 12.5px; }
+.squad .ct .bk { margin: 0 0 0 3px; }
 .crest { overflow: hidden; }
 
 /* ── scorers ── */

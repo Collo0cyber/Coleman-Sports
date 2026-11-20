@@ -177,11 +177,12 @@ function applyResults(S) {
     }
     const flipped = fx.home !== h.name;
     if (flipped) issue(e.ln, `Fixture is ${fx.home} (home) v ${fx.away}; entered the other way round, saved as ${fx.home} ${e.as}-${e.hs} ${fx.away}`);
-    const goals = parseScorers(e, h, a, issue);
+    const { goals, cards } = parseScorers(e, h, a, issue);
     fx.result = {
       hs: flipped ? e.as : e.hs,
       as: flipped ? e.hs : e.as,
       goals: goals.map(g => ({ ...g, side: g.forTeam === fx.home ? 'home' : 'away' })),
+      cards: cards.map(c => ({ ...c, side: c.team === fx.home ? 'home' : 'away' })),
     };
   }
 }
@@ -274,17 +275,19 @@ function findPlayer(name, team) {
 }
 
 function parseScorers(e, h, a, issue) {
-  const goals = [], unknown = [];
+  const goals = [], unknown = [], cards = [];
   for (let tok of e.scorers.split(/[,;]/)) {
     tok = tok.trim();
     if (!tok) continue;
-    let og = false, pen = false, count = 1, mins = [];
+    let og = false, pen = false, count = 1, mins = [], card = null;
+    // "Ben yc 30'" / "Ali rc" / "Ben yellow" / "Ali red" is a card, not a goal
+    tok = tok.replace(/\(\s*(yc|rc)\s*\)|\b(yc|rc|yellow|red)\b/i, (_, p1, p2) => { card = (p1 || p2)[0].toLowerCase() === 'y' ? 'Y' : 'R'; return ' '; });
     tok = tok.replace(/\(\s*o\.?g\.?\s*\)|\bo\.?g\.?(?=\s|$)/i, () => { og = true; return ' '; });
     tok = tok.replace(/\(\s*(p|pen)\s*\)|\bpen\b/i, () => { pen = true; return ' '; });
     tok = tok.replace(/\s*[x×]\s*(\d+)\s*$/i, (_, n) => { count = +n; return ''; });
     tok = tok.replace(/((?:\s+\(?\d{1,3}(?:\+\d{1,2})?\s*'?\)?)+)\s*$/, s => { mins = s.trim().split(/\s+/).map(x => x.replace(/[()']/g, '')); return ''; });
     const name = tok.replace(/\s+/g, ' ').trim();
-    if (!name) { issue(e.ln, 'A goal is missing the scorer\'s name'); continue; }
+    if (!name) { issue(e.ln, card ? 'A card is missing the player\'s name' : 'A goal is missing the scorer\'s name'); continue; }
     if (mins.length > 1) count = mins.length;
 
     let inH = findPlayer(name, h), inA = findPlayer(name, a);
@@ -294,6 +297,15 @@ function parseScorers(e, h, a, issue) {
     let player = null, team = null;
     if (inH.length + inA.length === 1) { player = inH[0] || inA[0]; team = inH.length ? h : a; }
     else if (inH.length + inA.length > 1) issue(e.ln, `"${name}" matches more than one player (${[...inH, ...inA].join(', ')}). Use the full name`);
+
+    if (card) {
+      if (!team) { if (!(inH.length + inA.length)) issue(e.ln, `Card for unknown player "${name}": add them to a team's players line`); continue; }
+      const earlier = cards.filter(c => c.player === player && c.team === team.name);
+      if (card === 'Y' && earlier.some(c => c.type === 'Y')) card = 'Y2';   // second yellow = sent off
+      if (earlier.some(c => c.type === 'R' || c.type === 'Y2')) issue(e.ln, `${player} already has a red card in this match`);
+      cards.push({ player, team: team.name, type: card, min: mins[0] || null });
+      continue;
+    }
 
     for (let k = 0; k < count; k++) {
       const g = { player: player || name, team: team?.name || null, min: mins[k] || null, og, pen };
@@ -317,13 +329,13 @@ function parseScorers(e, h, a, issue) {
   }
   const hg = goals.filter(g => g.forTeam === h.name).length, ag = goals.length - hg;
   if (goals.length && (hg !== e.hs || ag !== e.as)) issue(e.ln, `Scorers add up to ${hg}-${ag} but the score is ${e.hs}-${e.as}`);
-  return goals;
+  return { goals, cards };
 }
 
 function computeStats(S) {
   const row = {};
   S.teams.forEach(t => (row[t.name] = { team: t, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0, Pts: 0, form: [] }));
-  const scorers = new Map();
+  const scorers = new Map(), cardStats = new Map();
   S.played = 0; S.total = 0;
   for (const g of S.gws) for (const m of g.matches) {
     S.total++;
@@ -341,7 +353,16 @@ function computeStats(S) {
       s.goals++; if (goal.pen) s.pens++;
       scorers.set(key, s);
     }
+    for (const c of m.result.cards) {
+      const key = c.team + '|' + c.player;
+      const s = cardStats.get(key) || { player: c.player, team: c.team, y: 0, r: 0 };
+      if (c.type === 'Y') s.y++;
+      else if (c.type === 'Y2') { s.y++; s.r++; }   // second yellow: counts as a yellow and a sending-off
+      else s.r++;
+      cardStats.set(key, s);
+    }
   }
+  S.cards = [...cardStats.values()].sort((x, y) => y.r - x.r || y.y - x.y || x.player.localeCompare(y.player));
   S.table = Object.values(row).map(r => ({ ...r, GD: r.GF - r.GA }))
     .sort((x, y) => y.Pts - x.Pts || y.GD - x.GD || y.GF - x.GF || x.team.name.localeCompare(y.team.name));
   S.scorers = [...scorers.values()].sort((x, y) => y.goals - x.goals || x.player.localeCompare(y.player));
@@ -429,10 +450,10 @@ function viewMatches(gwNo) {
 
 function matchCard(m) {
   const r = m.result, H = team(m.home), A = team(m.away);
-  const list = side => {
+  const list = (side, ownGoals) => {
     if (!r) return '';
     const by = new Map();
-    r.goals.filter(g => g.side === side).forEach(g => {
+    r.goals.filter(g => g.side === side && !!g.og === ownGoals).forEach(g => {
       const k = g.player + (g.og ? '|og' : '');
       const e = by.get(k) || { name: g.player, og: g.og, bits: [] };
       e.bits.push((g.min ? g.min + "'" : '') + (g.pen ? (g.min ? ' ' : '') + 'pen' : ''));
@@ -441,10 +462,22 @@ function matchCard(m) {
     return [...by.values()].map(e => {
       const bits = e.bits.filter(Boolean), n = e.bits.length;
       const extra = bits.length ? ' ' + bits.join(', ') : n > 1 ? ` ×${n}` : '';
-      return `<li>${esc(e.name)}<span class="min">${esc(extra)}${e.og ? ' (og)' : ''}</span></li>`;
+      return `<li>${esc(e.name)}<span class="min">${esc(extra)}${e.og ? ' (OG)' : ''}</span></li>`;
     }).join('');
   };
-  const hl = list('home'), al = list('away');
+  const hl = list('home', false), al = list('away', false);
+  // Own goals: their own row with a red ball in the middle, listed under the team the goal counted for.
+  const hog = list('home', true), aog = list('away', true);
+  const ogRow = hog || aog ? `<div class="goals bookings"><ul class="home">${hog}</ul><span title="Own goal">${icon('ball', 'ball og')}</span><ul class="away">${aog}</ul></div>` : '';
+  // One row per card type, card in the middle like the goals' ball: yellow, second yellow, red.
+  const cardRow = type => {
+    if (!r) return '';
+    const side = s => r.cards.filter(c => c.side === s && c.type === type)
+      .map(c => `<li>${esc(c.player)}<span class="min">${c.min ? ` ${esc(c.min)}'` : ''}</span></li>`).join('');
+    const h = side('home'), a = side('away');
+    return h || a ? `<div class="goals bookings"><ul class="home">${h}</ul>${bk(type)}<ul class="away">${a}</ul></div>` : '';
+  };
+  const cardRows = ogRow + cardRow('Y') + cardRow('Y2') + cardRow('R');
   const win = r ? (r.hs > r.as ? 'home' : r.hs < r.as ? 'away' : '') : '';
   return `
     <article class="card match ${r ? 'played' : ''}">
@@ -455,7 +488,22 @@ function matchCard(m) {
         <div class="side away ${win === 'away' ? 'win' : ''}"><span>${esc(m.away)}</span>${crest(A, 'md')}</div>
       </div>
       ${hl || al ? `<div class="goals"><ul class="home">${hl}</ul>${icon('ball', 'ball')}<ul class="away">${al}</ul></div>` : ''}
+      ${cardRows}
     </article>`;
+}
+
+/* Card icons: yellow, red, and second yellow (yellow tucked behind red). */
+const bk = (type, cls = '') => type === 'Y2'
+  ? `<i class="bk y2 ${cls}" title="Second yellow" aria-label="Second yellow card"></i>`
+  : `<i class="bk ${type === 'Y' ? 'y' : 'r'} ${cls}" title="${type === 'Y' ? 'Yellow' : 'Red'} card" aria-label="${type === 'Y' ? 'Yellow' : 'Red'} card"></i>`;
+
+function cardList(list) {
+  return `<ol class="card flush scorers cards">${list.map(c => `
+    <li>
+      ${crest(team(c.team))}
+      <span class="who"><b>${esc(c.player)}</b><small>${esc(c.team)}</small></span>
+      <span class="tally">${c.y ? `<span>${bk('Y')}${c.y}</span>` : ''}${c.r ? `<span>${bk('R')}${c.r}</span>` : ''}</span>
+    </li>`).join('')}</ol>`;
 }
 
 function scorerList(list) {
@@ -470,14 +518,15 @@ function scorerList(list) {
 
 function viewScorers() {
   const s = S();
-  return s.scorers.length ? `<h2 class="sub">Top scorers</h2>${scorerList(s.scorers)}<p class="note">Own goals aren't counted.</p>`
-    : empty('No goals yet.');
+  return `<h2 class="sub">Top scorers</h2>${s.scorers.length ? scorerList(s.scorers) + '<p class="note">Own goals aren\'t counted.</p>' : empty('No goals yet.')}
+    <h2 class="sub">Cards</h2>${s.cards.length ? cardList(s.cards) + '<p class="note">A second yellow counts as a yellow and a red.</p>' : empty('No cards yet.')}`;
 }
 
 function viewTeams(focus) {
   const s = S();
   if (!s.teams.length) return empty('No teams yet.');
   const goalsBy = new Map(s.scorers.map(x => [x.team + '|' + x.player, x.goals]));
+  const cardsBy = new Map(s.cards.map(x => [x.team + '|' + x.player, x]));
   return s.teams.map(t => {
     const r = s.table.find(x => x.team === t);
     const players = [...t.players].sort((a, b) => (goalsBy.get(t.name + '|' + b) || 0) - (goalsBy.get(t.name + '|' + a) || 0) || a.localeCompare(b));
@@ -486,8 +535,10 @@ function viewTeams(focus) {
         <header>${crest(t, 'lg')}<div><h2>${esc(t.name)}</h2>
           <div class="muted">${ordinal(r.rank)} · ${r.Pts} pts · W${r.W} D${r.D} L${r.L}</div></div></header>
         <ul class="squad">${players.map(p => {
-          const g = goalsBy.get(t.name + '|' + p) || 0;
-          return `<li><span>${esc(p)}</span>${g ? `<b>${g}${icon('ball', 'mini')}</b>` : ''}</li>`;
+          const g = goalsBy.get(t.name + '|' + p) || 0, c = cardsBy.get(t.name + '|' + p);
+          const stats = (g ? `<b>${g}${icon('ball', 'mini')}</b>` : '') +
+            (c?.y ? `<b class="ct">${c.y}${bk('Y')}</b>` : '') + (c?.r ? `<b class="ct">${c.r}${bk('R')}</b>` : '');
+          return `<li><span>${esc(p)}</span>${stats ? `<span class="pst">${stats}</span>` : ''}</li>`;
         }).join('') || '<li class="muted">No players listed</li>'}</ul>
       </section>`;
   }).join('');
@@ -556,7 +607,7 @@ function render() {
     </header>
     <main>${issuesPanel()}${views[view]()}</main>
     <nav class="tabs" aria-label="Sections">
-      ${[['matches', 'Matches', 'matches'], ['table', 'Table', 'table'], ['scorers', 'Scorers', 'ball'], ['teams', 'Teams', 'teams']]
+      ${[['matches', 'Matches', 'matches'], ['table', 'Table', 'table'], ['scorers', 'Stats', 'ball'], ['teams', 'Teams', 'teams']]
         .map(([k, label, ic]) => `<a href="#${k}" class="${k === view ? 'on' : ''}" ${k === view ? 'aria-current="page"' : ''}>${icon(ic)}${label}</a>`).join('')}
     </nav>`;
 
