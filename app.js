@@ -443,7 +443,7 @@ function viewMatches(gwNo) {
       <div><h2>${esc(s.label)} ${gw.no}</h2><div class="muted">${fmtDate(gw.date)}${upNext ? `${gw.date ? ' · ' : ''}<b>Up next</b>` : ''}</div></div>
       ${next ? `<a class="arrow" href="#matches/${next.no}" aria-label="Next">›</a>` : '<span class="arrow off">›</span>'}
     </div>
-    ${gw.matches.map(matchCard).join('') || empty('Fixtures not announced yet.')}
+    ${gw.matches.length ? `<section class="card mdcard">${gw.matches.map(matchCard).join('')}</section>` : empty('Fixtures not announced yet.')}
     ${gw.byes.length ? `<p class="note">Bye: ${gw.byes.map(esc).join(', ')}</p>` : ''}
     ${ADMIN ? adminGw(gw) : ''}`;
 }
@@ -478,17 +478,29 @@ function matchCard(m) {
     return h || a ? `<div class="goals bookings"><ul class="home">${h}</ul>${bk(type)}<ul class="away">${a}</ul></div>` : '';
   };
   const cardRows = ogRow + cardRow('Y') + cardRow('Y2') + cardRow('R');
-  const win = r ? (r.hs > r.as ? 'home' : r.hs < r.as ? 'away' : '') : '';
-  return `
-    <article class="card match ${r ? 'played' : ''}">
-      <div class="meta"><span>Game ${m.n}</span>${m.time ? `<span class="time">${esc(m.time)}</span>` : ''}</div>
-      <div class="row">
-        <div class="side home ${win === 'home' ? 'win' : ''}">${crest(H, 'md')}<span>${esc(m.home)}</span></div>
-        ${r ? `<div class="score"><b>${r.hs}</b><i>–</i><b>${r.as}</b></div>` : '<div class="score vs">vs</div>'}
-        <div class="side away ${win === 'away' ? 'win' : ''}"><span>${esc(m.away)}</span>${crest(A, 'md')}</div>
+  const meta = `<div class="meta">${esc(S().label)} ${m.gw} · Game ${m.n}</div>`;
+
+  // Fixture (Match Fixtures poster): Name · crest · vs · crest · Name, kickoff chip underneath.
+  if (!r) return `
+    <article class="match upcoming">
+      ${meta}
+      <div class="fx">
+        <span class="nm">${esc(m.home)}</span>${crest(H, 'md')}<span class="vs">vs</span>${crest(A, 'md')}<span class="nm">${esc(m.away)}</span>
       </div>
-      ${hl || al ? `<div class="goals"><ul class="home">${hl}</ul>${icon('ball', 'ball')}<ul class="away">${al}</ul></div>` : ''}
-      ${cardRows}
+      ${m.time ? `<div class="when"><span class="time">${esc(m.time)}</span></div>` : ''}
+    </article>`;
+
+  // Result (Match Results poster): crest over name on each side; score box with the scorers' panel tucked under it.
+  // Always shown on results (same size for every game), even a 0-0 with nothing in it.
+  const events = `<div class="events">${hl || al ? `<div class="goals"><ul class="home">${hl}</ul>${icon('ball', 'ball')}<ul class="away">${al}</ul></div>` : ''}${cardRows}</div>`;
+  return `
+    <article class="match played">
+      ${meta}
+      <div class="res">
+        <div class="side">${crest(H, 'md')}<span>${esc(m.home)}</span></div>
+        <div class="mid ${events ? 'has-events' : ''}"><div class="score"><b>${r.hs}</b><i>:</i><b>${r.as}</b></div>${events}</div>
+        <div class="side">${crest(A, 'md')}<span>${esc(m.away)}</span></div>
+      </div>
     </article>`;
 }
 
@@ -497,8 +509,16 @@ const bk = (type, cls = '') => type === 'Y2'
   ? `<i class="bk y2 ${cls}" title="Second yellow" aria-label="Second yellow card"></i>`
   : `<i class="bk ${type === 'Y' ? 'y' : 'r'} ${cls}" title="${type === 'Y' ? 'Yellow' : 'Red'} card" aria-label="${type === 'Y' ? 'Yellow' : 'Red'} card"></i>`;
 
+/* Poster-style title: "Katorano FC League Season 4" → big league name, then "SEASON 4". */
+function titleHtml(name, info) {
+  const m = name.match(/^(.*?)\s*[-–·,]?\s*season\s+(\S+)\s*$/i);
+  const league = m ? m[1] : name;
+  return `<h1>${esc(league)}</h1>
+    <div class="subrow">${m ? `<span class="season">Season ${esc(m[2])}</span>` : ''}<span class="muted">${info}</span></div>`;
+}
+
 function cardList(list) {
-  return `<ol class="card flush scorers cards">${list.map(c => `
+  return `<ol class="card flush scorers cards"><li class="head" aria-hidden="true"><span class="crest-gap"></span><span class="who">Player</span><span class="tally">Cards</span></li>${list.map(c => `
     <li>
       ${crest(team(c.team))}
       <span class="who"><b>${esc(c.player)}</b><small>${esc(c.team)}</small></span>
@@ -507,7 +527,7 @@ function cardList(list) {
 }
 
 function scorerList(list) {
-  return `<ol class="card flush scorers">${list.map(s => `
+  return `<ol class="card flush scorers"><li class="head" aria-hidden="true"><span class="pos">#</span><span class="crest-gap"></span><span class="who">Player</span><span class="g">Goals</span></li>${list.map(s => `
     <li class="${s.rank <= 3 ? 'top' + s.rank : ''}">
       <span class="pos">${s.rank}</span>
       ${crest(team(s.team))}
@@ -600,8 +620,7 @@ function render() {
   app.innerHTML = `
     <header class="top">
       <div class="title">
-        <h1>${esc(s.name)}</h1>
-        <div class="muted">${s.played} of ${s.total} matches played${s.gws.length ? ` · ${s.gws.length} ${esc(s.label.toLowerCase())}s` : ''}</div>
+        ${titleHtml(s.name, `${s.played}/${s.total} played${s.gws.length ? ` · ${s.gws.length} ${esc(s.label.toLowerCase())}s` : ''}`)}
       </div>
       ${state.seasons.length > 1 ? `<select id="season" aria-label="Season">${state.seasons.map((x, i) => `<option value="${i}" ${i === state.si ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}
     </header>
