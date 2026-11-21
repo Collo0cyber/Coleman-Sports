@@ -57,7 +57,7 @@ GW1
 gumite fc 2-2 mugga fc: Doctor, ali, william, mooni
 hormuz fc 3-3 eaglez fc: xavi, sam, molson, enock, p shaw, jose
 mugga fc 1-1 hormuz fc: dr tee, collo
-eaglez fc 0-0 gumite fc: Molson, Chad, Jose, Ali Mans, Xavi, Wycliffe, Cash, Lerry, Raech, ross
+eaglez fc 10-0 gumite fc: Molson, Chad, Jose, Ali Mans, Xavi, Wycliffe, Cash, Lerry, Raech, ross
 
 //  • Each scorer's team is worked out from the player lists above.
 //  • First names work if they're unique in that match ("Ali" = Ali Hassan).
