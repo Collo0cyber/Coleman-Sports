@@ -401,6 +401,13 @@ const ICON_PATHS = {
 const icon = (name, cls = 'ic') =>
   `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[name]}</svg>`;
 
+/* Last 5 results, oldest → newest (newest on the right); empty slots until 5 games are played. */
+const formBoxes = form => {
+  const last = form.slice(-5);
+  const slots = [...Array(5 - last.length).fill(null), ...last];
+  return slots.map(f => f ? `<i class="f${f}" title="${{ W: 'Win', D: 'Draw', L: 'Loss' }[f]}">${f}</i>` : '<i class="fN" aria-hidden="true"></i>').join('');
+};
+
 function viewTable() {
   const s = S();
   if (!s.teams.length) return empty('No teams yet. Add <code>team:</code> lines to the season file.');
@@ -409,18 +416,20 @@ function viewTable() {
       <td class="pos">${r.rank}</td>
       <td class="tm"><a href="#teams/${encodeURIComponent(r.team.name)}">${crest(r.team)}<span>${esc(r.team.name)}</span></a></td>
       <td>${r.P}</td><td>${r.W}</td><td>${r.D}</td><td>${r.L}</td>
-      <td class="wide">${r.GF}</td><td class="wide">${r.GA}</td>
       <td>${r.GD > 0 ? '+' : ''}${r.GD}</td>
       <td class="pts">${r.Pts}</td>
-      <td class="form wide">${r.form.slice(-5).map(f => `<i class="f${f}" title="${f}">${f}</i>`).join('')}</td>
+      <td class="form">${formBoxes(r.form)}</td>
     </tr>`).join('');
+  // The table is wider than a phone: it scrolls sideways inside its card, with # and Team pinned on the left.
   return `
     <section class="card flush">
-      <table class="standings">
-        <thead><tr><th class="pos">#</th><th class="tm">Team</th><th>P</th><th>W</th><th>D</th><th>L</th>
-          <th class="wide">GF</th><th class="wide">GA</th><th>GD</th><th class="pts">Pts</th><th class="form wide">Form</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
+      <div class="tscroll">
+        <table class="standings">
+          <thead><tr><th class="pos">#</th><th class="tm">Team</th><th>P</th><th>W</th><th>D</th><th>L</th>
+            <th>GD</th><th class="pts">Pts</th><th class="form">Form</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
     </section>
     <p class="note">3 pts for a win, 1 for a draw. Ties split by goal difference, then goals scored.</p>
     ${s.scorers.length ? `<h2 class="sub">Top scorers <a href="#scorers">See all</a></h2>${scorerList(s.scorers.slice(0, 3))}` : ''}`;
